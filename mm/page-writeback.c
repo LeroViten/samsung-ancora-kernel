@@ -483,7 +483,7 @@ static void bdi_writeout_fraction(struct backing_dev_info *bdi,
  * registered backing devices, which, for obvious reasons, can not
  * exceed 100%.
  */
-static unsigned int bdi_min_ratio = 5;
+static unsigned int bdi_min_ratio;
 
 int bdi_set_min_ratio(struct backing_dev_info *bdi, unsigned int min_ratio)
 {
@@ -1084,7 +1084,7 @@ static void bdi_update_bandwidth(struct backing_dev_info *bdi,
 }
 
 /*
- * After a task dirtied this many pages, balance_dirty_pages_ratelimited()
+ * After a task dirtied this many pages, balance_dirty_pages_ratelimited_nr()
  * will look to see if it needs to start dirty throttling.
  *
  * If dirty_poll_interval is too low, big NUMA machines will call the expensive
@@ -1451,8 +1451,9 @@ static DEFINE_PER_CPU(int, bdp_ratelimits);
 DEFINE_PER_CPU(int, dirty_throttle_leaks) = 0;
 
 /**
- * balance_dirty_pages_ratelimited - balance dirty memory state
+ * balance_dirty_pages_ratelimited_nr - balance dirty memory state
  * @mapping: address_space which was dirtied
+ * @nr_pages_dirtied: number of pages which the caller has just dirtied
  *
  * Processes which are dirtying memory should call in here once for each page
  * which was newly dirtied.  The function will periodically check the system's
@@ -1463,7 +1464,8 @@ DEFINE_PER_CPU(int, dirty_throttle_leaks) = 0;
  * limit we decrease the ratelimiting by a lot, to prevent individual processes
  * from overshooting the limit by (ratelimit_pages) each.
  */
-void balance_dirty_pages_ratelimited(struct address_space *mapping)
+void balance_dirty_pages_ratelimited_nr(struct address_space *mapping,
+					unsigned long nr_pages_dirtied)
 {
 	struct backing_dev_info *bdi = mapping->backing_dev_info;
 	int ratelimit;
@@ -1497,7 +1499,6 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 	 */
 	p = &__get_cpu_var(dirty_throttle_leaks);
 	if (*p > 0 && current->nr_dirtied < ratelimit) {
-		unsigned long nr_pages_dirtied;
 		nr_pages_dirtied = min(*p, ratelimit - current->nr_dirtied);
 		*p -= nr_pages_dirtied;
 		current->nr_dirtied += nr_pages_dirtied;
@@ -1507,7 +1508,7 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 	if (unlikely(current->nr_dirtied >= ratelimit))
 		balance_dirty_pages(mapping, current->nr_dirtied);
 }
-EXPORT_SYMBOL(balance_dirty_pages_ratelimited);
+EXPORT_SYMBOL(balance_dirty_pages_ratelimited_nr);
 
 void throttle_vm_writeout(gfp_t gfp_mask)
 {
@@ -1678,18 +1679,10 @@ void writeback_set_ratelimit(void)
 }
 
 static int __cpuinit
-ratelimit_handler(struct notifier_block *self, unsigned long action,
-		  void *hcpu)
+ratelimit_handler(struct notifier_block *self, unsigned long u, void *v)
 {
-
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-	case CPU_DEAD:
-		writeback_set_ratelimit();
-		return NOTIFY_OK;
-	default:
-		return NOTIFY_DONE;
-	}
+	writeback_set_ratelimit();
+	return NOTIFY_DONE;
 }
 
 static struct notifier_block __cpuinitdata ratelimit_nb = {
