@@ -661,7 +661,12 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 	MDP_OUTP(MDP_BASE + LCDC_BASE + 0x1c, active_hctl);
 	MDP_OUTP(MDP_BASE + LCDC_BASE + 0x20, active_v_start);
 	MDP_OUTP(MDP_BASE + LCDC_BASE + 0x24, active_v_end);
+#if defined(CONFIG_MACH_ANCORA) || defined(CONFIG_MACH_ANCORA_TMO)
+	if (board_lcd_hw_revision != 3)
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+#else
 	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+#endif
 
 	mdp_histogram_ctrl_all(TRUE);
 
@@ -745,11 +750,21 @@ int mdp4_lcdc_off(struct platform_device *pdev)
 	mdp_histogram_ctrl_all(FALSE);
 #endif
 
+#if defined(CONFIG_MACH_ANCORA) || defined(CONFIG_MACH_ANCORA_TMO)
+	if (board_lcd_hw_revision == 3)
+	{
+        	/* MDP cmd block enable */
+        	mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+	}
+#endif
 	MDP_OUTP(MDP_BASE + LCDC_BASE, 0);
 
 #if defined(CONFIG_MACH_ANCORA) || defined(CONFIG_MACH_ANCORA_TMO)
 	if (board_lcd_hw_revision == 3)
 	{
+	        /* MDP cmd block disable */
+	        mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+
 		/* MDP clock disable */
 		mdp_clk_ctrl(0);
 		mdp_pipe_ctrl(MDP_OVERLAY0_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
